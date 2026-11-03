@@ -1,0 +1,19 @@
+[project]
+name = "stale-pr-reminder"
+version = "0.1.0"
+description = "Posts stale PR review reminders to an encrypted Matrix room"
+requires-python = ">=3.12"
+dependencies = [
+    "tb-common",
+    "pyyaml>=6",
+]
+
+[project.scripts]
+stale-pr-reminder = "stale_pr_reminder.cli:main"
+
+[tool.uv.sources]
+tb-common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

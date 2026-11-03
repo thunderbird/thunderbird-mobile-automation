@@ -1,0 +1,49 @@
+# Stale PR review reminder configuration.
+# GitHub login -> Matrix ID mappings for @mentions live in the MATRIX_USERS secret.
+
+# A requested reviewer is "stale" after this many working days (Mon-Fri, UTC) without
+# reviewing or commenting since they were (re-)requested.
+# This default applies to PRs without a matching label rule (no tb-team / priority label).
+# Those are listed "for information" only: their reviewers are NOT @mentioned.
+stale_after_working_days: 10
+
+skip_drafts: true
+
+# Post a "nothing stale" message when there is nothing to report.
+post_when_empty: false
+
+labels:
+  # PRs with any of these labels are never reported (case-insensitive).
+  # Note: "report: exclude" is about release notes, not reviews, so it isn't listed here.
+  exclude:
+    - "status: blocked"
+
+  # Label rules. PRs matching any rule are listed under "Needs review" and their reviewers
+  # are @mentioned. When several match, the lowest threshold and the lowest priority win.
+  # A lower priority is listed first.
+  rules:
+    - label: "priority: urgent"
+      stale_after_working_days: 0   # immediately
+      priority: 0
+    - label: "priority: high"
+      stale_after_working_days: 1
+      priority: 1
+    - label: tb-team
+      stale_after_working_days: 2
+      priority: 2
+    - label: "priority: medium"
+      stale_after_working_days: 3
+      priority: 3
+    - label: "priority: low"
+      stale_after_working_days: 5
+      priority: 200
+
+# Each repo belongs to exactly one team; its PRs are reported under that team.
+# Only PRs in the repos listed here are checked.
+teams:
+  - name: Android
+    repos:
+      - thunderbird/thunderbird-android
+  - name: iOS
+    repos:
+      - thunderbird/thunderbird-ios

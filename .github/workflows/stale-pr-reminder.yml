@@ -1,0 +1,49 @@
+name: Stale PR reminder
+
+on:
+  schedule:
+    # Weekdays 16:00 UTC: ~17:00/18:00 Berlin, ~08:00/09:00 Vancouver (shifts with DST).
+    - cron: "0 16 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print the report (job summary), don't post to Matrix
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: stale-pr-reminder
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    environment: matrix
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install
+        run: uv sync --frozen --package stale-pr-reminder
+
+      - name: Report stale PRs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MATRIX_HOMESERVER: ${{ secrets.MATRIX_HOMESERVER }}
+          MATRIX_USER_ID: ${{ secrets.MATRIX_USER_ID }}
+          MATRIX_DEVICE_ID: ${{ secrets.MATRIX_DEVICE_ID }}
+          MATRIX_ACCESS_TOKEN: ${{ secrets.MATRIX_ACCESS_TOKEN }}
+          MATRIX_PICKLE_KEY: ${{ secrets.MATRIX_PICKLE_KEY }}
+          MATRIX_ACCOUNT_PICKLE: ${{ secrets.MATRIX_ACCOUNT_PICKLE }}
+          MATRIX_ROOM_ID: ${{ secrets.MATRIX_ROOM_ID }}
+          MATRIX_USERS: ${{ secrets.MATRIX_USERS }}
+        run: >-
+          uv run --frozen stale-pr-reminder
+          --config bots/stale-pr-reminder/config.yml
+          ${{ inputs.dry_run && '--dry-run' || '' }}
