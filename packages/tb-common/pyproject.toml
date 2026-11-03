@@ -1,0 +1,16 @@
+[project]
+name = "tb-common"
+version = "0.1.0"
+description = "Shared Matrix (E2EE) and GitHub helpers for thunderbird-mobile-automation"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "matrix-nio[e2e]>=0.26",
+]
+
+[project.scripts]
+tb-matrix-setup = "tb_common.matrix_setup:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

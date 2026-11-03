@@ -1,0 +1,25 @@
+[project]
+name = "thunderbird-mobile-automation"
+version = "0.1.0"
+description = "Bots, workflows and other automation for the Thunderbird mobile teams"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*", "bots/*"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["bots", "packages"]
