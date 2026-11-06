@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from tb_common.github import GitHubClient
-from tb_common.matrix import MatrixCredentials, send_message
+from tb_common.matrix import MatrixCredentials, send_messages
 
 from .collect import collect_stale_pull_requests
 from .config import load_config, parse_matrix_users
@@ -32,27 +32,37 @@ def main() -> None:
     config = load_config(args.config)
     with GitHubClient() as github:
         pulls = collect_stale_pull_requests(config, github, datetime.now(UTC))
-    # Public-safe version (GitHub logins only) for logs and the job summary.
-    public_message = build_message(config, pulls)
+    rooms = config.teams_by_room()
+    # One message per room. Public-safe versions (GitHub logins only) for logs and the summary.
+    public = {env: build_message(config, pulls, teams=teams) for env, teams in rooms.items()}
+    has_pulls = {env: any(p.team in teams for p in pulls) for env, teams in rooms.items()}
 
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(summary, "a") as fh:
-            fh.write(f"```\n{public_message.body}\n```\n")
+            for env, message in public.items():
+                fh.write(f"**{env}**\n```\n{message.body}\n```\n")
 
     if args.dry_run:
-        print(public_message.body)
-        return
-    if not pulls and not config.post_when_empty:
-        logging.info("No stale PRs; nothing posted.")
+        for env, message in public.items():
+            print(f"=== {env}\n{message.body}\n")
         return
 
-    room_id = os.environ.get("MATRIX_ROOM_ID")
-    if not room_id:
-        sys.exit("MATRIX_ROOM_ID is not set")
+    targets = [env for env in rooms if has_pulls[env] or config.post_when_empty]
+    if not targets:
+        logging.info("No stale PRs; nothing posted.")
+        return
+    missing = [env for env in targets if not os.environ.get(env)]
+    if missing:
+        sys.exit(f"Room ID not set: {', '.join(missing)}")
+
     matrix_users = parse_matrix_users(os.environ.get("MATRIX_USERS"))
-    message = build_message(config, pulls, matrix_users)
-    event_id = asyncio.run(send_message(MatrixCredentials.from_env(), room_id, message))
-    logging.info("Posted %d stale PRs to Matrix (event %s)", len(pulls), event_id)
+    deliveries = [
+        (os.environ[env], build_message(config, pulls, matrix_users, teams=rooms[env]))
+        for env in targets
+    ]
+    event_ids = asyncio.run(send_messages(MatrixCredentials.from_env(), deliveries))
+    for env, event_id in zip(targets, event_ids, strict=True):
+        logging.info("Posted to %s (event %s)", env, event_id)
 
 
 if __name__ == "__main__":

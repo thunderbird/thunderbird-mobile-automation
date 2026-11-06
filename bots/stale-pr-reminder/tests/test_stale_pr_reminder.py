@@ -60,12 +60,17 @@ def test_working_days_between(start, end, expected):
     assert working_days_between(dt(start), dt(end)) == pytest.approx(expected)
 
 
-def test_rerequest_and_comments_reset_clock():
+def test_only_rerequest_resets_clock():
     timeline = [
         requested("alice", "2026-10-26T09:00:00Z"),
         {"event": "commented", "created_at": "2026-10-27T09:00:00Z", "actor": {"login": "alice"}},
         {"event": "committed"},
         requested("alice", "2026-10-28T09:00:00Z"),
+        {"event": "commented", "created_at": "2026-10-29T09:00:00Z", "actor": {"login": "alice"}},
+        {
+            "event": "line-commented",
+            "comments": [{"user": {"login": "alice"}, "created_at": "2026-10-30T09:00:00Z"}],
+        },
     ]
     [reviewer] = pending_reviewers(make_pull(), timeline)
     assert reviewer.waiting_since == dt("2026-10-28T09:00")
@@ -214,7 +219,7 @@ def test_unlabeled_prs_are_informational_without_mentions():
     assert labeled.actionable and not unlabeled.actionable
 
     body = build_message(CONFIG, [labeled, unlabeled], users).content()["body"]
-    needs, info = body.split("For information:")
+    needs, info = body.split("Community:")
     assert "#1" in needs and "@alice:example.org" in needs
     assert "#2" in info and "alice (15 working days)" in info
     assert "@alice:example.org" not in info
@@ -225,3 +230,86 @@ def test_unlabeled_prs_use_long_threshold():
     repo = "thunderbird/thunderbird-android"
     assert evaluate_pull(CONFIG, repo, make_pull(), timeline, dt("2026-11-06T09:00")) is None
     assert evaluate_pull(CONFIG, repo, make_pull(), timeline, dt("2026-11-09T09:00")) is not None
+
+
+def test_teams_share_a_room_by_default(tmp_path):
+    path = tmp_path / "config.yml"
+    path.write_text(
+        "teams:\n"
+        "  - {name: A, emoji: '🤖', repos: [org/a]}\n"
+        "  - {name: B, repos: [org/b]}\n"
+        "  - {name: C, repos: [org/c], room_env: MATRIX_ROOM_ID_C}\n"
+    )
+    config = load_config(path)
+    rooms = config.teams_by_room()
+    assert [t.name for t in rooms["MATRIX_ROOM_ID"]] == ["A", "B"]
+    assert [t.name for t in rooms["MATRIX_ROOM_ID_C"]] == ["C"]
+    assert config.teams[0].title == "🤖 A" and config.teams[1].title == "B"
+
+
+def test_message_only_contains_its_teams():
+    timeline = [requested("alice", "2026-10-26T09:00:00Z")]
+    now = dt("2026-11-16T09:00")
+    android = evaluate_pull(
+        CONFIG, "thunderbird/thunderbird-android", make_pull(number=1), timeline, now
+    )
+    ios = evaluate_pull(CONFIG, "thunderbird/thunderbird-ios", make_pull(number=2), timeline, now)
+
+    body = build_message(CONFIG, [android, ios], teams=[IOS]).content()["body"]
+    assert "iOS (1)" in body and "Android" not in body
+    assert "(1)" in body.splitlines()[0]
+
+
+def test_unlabeled_prs_split_into_collaborators_and_community():
+    timeline = [requested("alice", "2026-10-12T09:00:00Z")]
+    now = dt("2026-11-02T09:00")
+    repo = "thunderbird/thunderbird-android"
+
+    def pull(number, association):
+        return evaluate_pull(
+            CONFIG,
+            repo,
+            make_pull(
+                number=number, author_association=association, created_at="2026-10-01T09:00:00Z"
+            ),
+            timeline,
+            now,
+        )
+
+    member, outsider = pull(1, "MEMBER"), pull(2, "FIRST_TIME_CONTRIBUTOR")
+    assert member.is_collaborator and not outsider.is_collaborator
+
+    body = build_message(CONFIG, [outsider, member]).content()["body"]
+    collaborators, community = body.split("Community:")
+    assert "#1" in collaborators.split("Collaborators:")[1] and "#2" in community
+    assert body.index("Collaborators:") < body.index("Community:")
+
+
+def test_dependency_bot_prs_get_their_own_section():
+    timeline = [requested("alice", "2026-10-12T09:00:00Z")]
+    now = dt("2026-11-02T09:00")
+    repo = "thunderbird/thunderbird-android"
+
+    def pull(number, author, labels=()):
+        return evaluate_pull(
+            CONFIG,
+            repo,
+            make_pull(
+                number=number,
+                user={"login": author},
+                labels=[{"name": label} for label in labels],
+                created_at="2026-10-01T09:00:00Z",
+            ),
+            timeline,
+            now,
+        )
+
+    bump = pull(1, "dependabot[bot]")
+    other_bot = pull(2, "github-actions[bot]")
+    urgent_bump = pull(3, "dependabot[bot]", ["tb-team"])
+    body = build_message(CONFIG, [bump, other_bot, urgent_bump]).content()["body"]
+
+    rest, dependencies = body.split("Dependencies:")
+    assert "#1 " in dependencies and "#2 " not in dependencies
+    assert "#2 " in rest.split("Community:")[1]
+    assert "#3 " in rest.split("Needs review:")[1].split("Community:")[0]

@@ -35,8 +35,9 @@ def working_days_between(start: datetime, end: datetime) -> float:
 def pending_reviewers(pull: dict, timeline: list[dict]) -> list[PendingReviewer]:
     """Work out when each currently requested reviewer started waiting.
 
-    For a user, the clock starts at the most recent review request for them, and resets
-    whenever they review or comment. Pushes by the author do not reset it.
+    For a user, the clock starts at the most recent review request for them. Comments don't
+    reset it: a reviewer stays pending until they approve or request changes (GitHub then drops
+    the request) or are re-requested.
     For a team (membership is private), it starts at the team's latest review request and
     resets on any review by someone other than the author.
     """
@@ -45,7 +46,6 @@ def pending_reviewers(pull: dict, timeline: list[dict]) -> list[PendingReviewer]
 
     user_requests: dict[str, datetime] = {}
     team_requests: dict[str, datetime] = {}
-    user_activity: dict[str, datetime] = {}
     last_non_author_review: datetime | None = None
 
     def bump(store: dict[str, datetime], key: str, when: datetime) -> None:
@@ -63,29 +63,16 @@ def pending_reviewers(pull: dict, timeline: list[dict]) -> list[PendingReviewer]
         elif kind == "reviewed" and event.get("submitted_at") and event.get("user"):
             login = event["user"]["login"].lower()
             when = parse_time(event["submitted_at"])
-            bump(user_activity, login, when)
             if login != author and (
                 last_non_author_review is None or when > last_non_author_review
             ):
                 last_non_author_review = when
-        elif kind == "commented" and event.get("created_at"):
-            user = event.get("user") or event.get("actor")
-            if user:
-                bump(user_activity, user["login"].lower(), parse_time(event["created_at"]))
-        elif kind == "line-commented":
-            for comment in event.get("comments") or []:
-                if comment.get("user") and comment.get("created_at"):
-                    bump(
-                        user_activity,
-                        comment["user"]["login"].lower(),
-                        parse_time(comment["created_at"]),
-                    )
 
     result = []
     for reviewer in pull.get("requested_reviewers") or []:
         login = reviewer["login"]
         key = login.lower()
-        since = max(user_requests.get(key, created), user_activity.get(key, created))
+        since = user_requests.get(key, created)
         result.append(PendingReviewer(login=login, is_team=False, waiting_since=since))
 
     org = pull["base"]["repo"]["owner"]["login"]

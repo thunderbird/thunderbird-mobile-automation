@@ -1,8 +1,8 @@
 # Stale PR review reminder configuration.
 # GitHub login -> Matrix ID mappings for @mentions live in the MATRIX_USERS secret.
 
-# A requested reviewer is "stale" after this many working days (Mon-Fri, UTC) without
-# reviewing or commenting since they were (re-)requested.
+# A requested reviewer is "stale" after this many working days (Mon-Fri, UTC) since they were
+# (re-)requested. Comments don't count; approving or requesting changes does.
 # This default applies to PRs without a matching label rule (no tb-team / priority label).
 # Those are listed "for information" only: their reviewers are NOT @mentioned.
 stale_after_working_days: 10
@@ -40,10 +40,23 @@ labels:
 
 # Each repo belongs to exactly one team; its PRs are reported under that team.
 # Only PRs in the repos listed here are checked.
+#
+# room_env names the environment variable (a secret in the workflow) holding the team's room ID;
+# the default is MATRIX_ROOM_ID. Teams sharing a room get one combined message, teams with their
+# own room get their own message.
 teams:
   - name: Android
+    emoji: "🤖"
     repos:
       - thunderbird/thunderbird-android
+      - thunderbird/thunderbird-android-l10n
   - name: iOS
+    emoji: "🍎"
     repos:
       - thunderbird/thunderbird-ios
+  - name: Shared
+    emoji: "🧩"
+    repos:
+      - thunderbird/thunderbird-mobile-components
+      - thunderbird/thunderbird-mobile-components-l10n
+      - thunderbird/thunderbird-mobile-weblate

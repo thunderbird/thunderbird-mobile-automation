@@ -35,16 +35,18 @@ Every weekday at 16:00 UTC (the overlap of Berlin and Vancouver working hours) i
 PRs whose requested reviewers haven't responded to one encrypted Matrix room, grouped by team,
 with @mentions.
 
-- **Stale:** a requested reviewer hasn't reviewed or commented for `stale_after_working_days`
-  (Mon–Fri) since they were (re-)requested. Pushes by the author don't reset the clock. For team
-  review requests, any review by someone other than the author resets the clock.
+- **Stale:** a requested reviewer has been pending for `stale_after_working_days` (Mon–Fri)
+  since they were (re-)requested. Only approving, requesting changes or a re-request ends or
+  restarts that; comments and pushes don't. For team review requests, any review by someone other
+  than the author resets the clock.
 - **Teams:** each repo belongs to exactly one team, and its PRs are reported under that team.
 - **Labels:** `status: blocked` PRs and drafts are skipped. PRs with `tb-team` or a
   `priority:` label are listed under **Needs review**, and their reviewers are @mentioned:
   `priority: urgent` (stale immediately, listed first), `priority: high` (1 day), `tb-team` (2 days),
   `priority: medium` (3 days), `priority: low` (5 days).
-- **Unlabeled PRs** are listed **For information** after 10 working days, with their reviewers
-  and how long they've been waiting, but no @mentions.
+- **Unlabeled PRs** are listed after 10 working days, with their reviewers and how long they've
+  been waiting, but no @mentions: first **Collaborators** (org members and repo collaborators),
+  then **Community** (everyone else), then **Dependencies** (Dependabot and Renovate PRs).
 - **Mentions:** GitHub logins are mapped to Matrix IDs by the `MATRIX_USERS` secret
   ([setup](docs/setup.md#5-map-github-users-to-matrix-users-optional)), so the mapping isn't
   public. Logs and the job summary only show GitHub logins.

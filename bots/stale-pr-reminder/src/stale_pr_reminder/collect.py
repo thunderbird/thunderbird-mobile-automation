@@ -18,6 +18,12 @@ class StaleReviewer:
     working_days: float
 
 
+# GitHub only reports MEMBER for public org memberships; private members show up as
+# CONTRIBUTOR, so internal PRs rely on the tb-team label to land in "Needs review".
+COLLABORATOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+DEPENDENCY_BOTS = {"dependabot[bot]", "renovate[bot]"}
+
+
 @dataclass(frozen=True)
 class StalePullRequest:
     repo: str
@@ -31,6 +37,15 @@ class StalePullRequest:
     threshold: float
     actionable: bool
     stale_reviewers: list[StaleReviewer]
+    author_association: str = "NONE"
+
+    @property
+    def is_dependency_update(self) -> bool:
+        return self.author.lower() in DEPENDENCY_BOTS
+
+    @property
+    def is_collaborator(self) -> bool:
+        return self.author_association in COLLABORATOR_ASSOCIATIONS
 
     @property
     def max_working_days(self) -> float:
@@ -66,6 +81,7 @@ def evaluate_pull(
         threshold=threshold,
         actionable=config.is_actionable(label_set),
         stale_reviewers=sorted(stale, key=lambda r: -r.working_days),
+        author_association=pull.get("author_association") or "NONE",
     )
 
 

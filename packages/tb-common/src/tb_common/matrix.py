@@ -137,14 +137,37 @@ async def _sync_room(client: AsyncClient, room_id: str):
     )
 
 
-async def send_message(
+async def _send_to_room(
+    client: AsyncClient, room_id: str, message: MatrixMessage, require_encryption: bool
+) -> str:
+    # Accepts a pending invite; the returned room ID is canonical.
+    join = await client.join(room_id.strip())
+    if not isinstance(join, JoinResponse):
+        raise MatrixError(f"Could not join the room: {join}")
+    room_id = join.room_id
+
+    room = await _sync_room(client, room_id)
+    if require_encryption and not room.encrypted:
+        raise MatrixError("The room is not encrypted; refusing to send")
+
+    response = await client.room_send(
+        room_id,
+        "m.room.message",
+        message.content(),
+        ignore_unverified_devices=True,
+    )
+    if not isinstance(response, RoomSendResponse):
+        raise MatrixError(f"Sending failed: {response}")
+    return response.event_id
+
+
+async def send_messages(
     credentials: MatrixCredentials,
-    room_id: str,
-    message: MatrixMessage,
+    deliveries: list[tuple[str, MatrixMessage]],
     *,
     require_encryption: bool = True,
-) -> str:
-    """Send ``message`` to ``room_id`` and return the event ID."""
+) -> list[str]:
+    """Send each ``(room_id, message)`` in one session and return the event IDs."""
     with tempfile.TemporaryDirectory(prefix="matrix-store-") as store_dir:
         seed_store(credentials, store_dir)
 
@@ -166,25 +189,23 @@ async def send_message(
             client.restore_login(
                 credentials.user_id, credentials.device_id, credentials.access_token
             )
-
-            # Accepts a pending invite; the returned room ID is canonical.
-            join = await client.join(room_id.strip())
-            if not isinstance(join, JoinResponse):
-                raise MatrixError(f"Could not join the room: {join}")
-            room_id = join.room_id
-
-            room = await _sync_room(client, room_id)
-            if require_encryption and not room.encrypted:
-                raise MatrixError("The room is not encrypted; refusing to send")
-
-            response = await client.room_send(
-                room_id,
-                "m.room.message",
-                message.content(),
-                ignore_unverified_devices=True,
-            )
-            if not isinstance(response, RoomSendResponse):
-                raise MatrixError(f"Sending failed: {response}")
-            return response.event_id
+            return [
+                await _send_to_room(client, room_id, message, require_encryption)
+                for room_id, message in deliveries
+            ]
         finally:
             await client.close()
+
+
+async def send_message(
+    credentials: MatrixCredentials,
+    room_id: str,
+    message: MatrixMessage,
+    *,
+    require_encryption: bool = True,
+) -> str:
+    """Send ``message`` to ``room_id`` and return the event ID."""
+    [event_id] = await send_messages(
+        credentials, [(room_id, message)], require_encryption=require_encryption
+    )
+    return event_id

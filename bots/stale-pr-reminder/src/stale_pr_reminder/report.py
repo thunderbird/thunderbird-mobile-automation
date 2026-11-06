@@ -6,7 +6,7 @@ from html import escape
 from tb_common.matrix import MatrixMessage
 
 from .collect import StalePullRequest
-from .config import DEFAULT_PRIORITY, Config
+from .config import DEFAULT_PRIORITY, Config, Team
 
 
 def _days(value: float) -> str:
@@ -14,8 +14,8 @@ def _days(value: float) -> str:
     return f"{days} working day{'s' if days != 1 else ''}"
 
 
-def _sorted_by_team(config: Config, pulls: list[StalePullRequest]):
-    for team in config.teams:
+def _sorted_by_team(teams: list[Team], pulls: list[StalePullRequest]):
+    for team in teams:
         team_pulls = [p for p in pulls if p.team.name == team.name]
         if team_pulls:
             yield team, sorted(team_pulls, key=lambda p: (p.priority, -p.max_working_days))
@@ -25,9 +25,13 @@ def build_message(
     config: Config,
     pulls: list[StalePullRequest],
     matrix_users: Mapping[str, str] | None = None,
+    teams: list[Team] | None = None,
 ) -> MatrixMessage:
-    """Build the report. Without ``matrix_users`` reviewers are shown by GitHub login only,
-    which is what goes into public logs and job summaries."""
+    """Build the report for ``teams`` (default: all). Without ``matrix_users`` reviewers are
+    shown by GitHub login only, which is what goes into public logs and job summaries."""
+    teams = teams if teams is not None else config.teams
+    names = {team.name for team in teams}
+    pulls = [p for p in pulls if p.team.name in names]
     if not pulls:
         text = "No stale PR reviews today 🎉"
         return MatrixMessage(body=text, formatted_body=escape(text), msgtype="m.notice")
@@ -42,7 +46,7 @@ def build_message(
             mentions.append(matrix_id)
             href = f"https://matrix.to/#/{escape(matrix_id)}"
             return matrix_id, f'<a href="{href}">{escape(matrix_id)}</a>'
-        return login, f"<code>{escape(login)}</code>"
+        return login, f"<b>{escape(login)}</b>"
 
     def add_pull(pull: StalePullRequest) -> None:
         flag = "⭐ " if pull.priority < DEFAULT_PRIORITY else ""
@@ -55,25 +59,38 @@ def build_message(
             )
             reviewers_text.append(f"{plain} ({_days(stale.working_days)})")
             reviewers_html.append(f"{html} ({_days(stale.working_days)})")
-        detail_text = f"waiting on: {', '.join(reviewers_text)}"
-        detail_html = f"waiting on: {', '.join(reviewers_html)}"
-        labels = f" [{', '.join(pull.labels)}]" if pull.labels else ""
-        labels_html = "".join(f" <code>{escape(label)}</code>" for label in pull.labels)
+        sub_text = [pull.url]
+        sub_html = []
+        if pull.labels:
+            sub_text.append(" · ".join(pull.labels))
+            sub_html.append(" · ".join(f"<code>{escape(label)}</code>" for label in pull.labels))
+        sub_text.append(f"waiting on: {', '.join(reviewers_text)}")
+        sub_html.append(f"waiting on: {', '.join(reviewers_html)}")
+
         text_lines.append(
-            f"- {flag}{ref} {pull.title} by {pull.author}{labels}\n  {pull.url}\n  {detail_text}"
+            "\n".join(
+                [f"- {flag}{ref} {pull.title} by {pull.author}"]
+                + [f"  - {line}" for line in sub_text]
+            )
         )
         html_parts.append(
             f'<li>{flag}<a href="{escape(pull.url)}">{escape(ref)}</a> '
-            f"{escape(pull.title)} by <code>{escape(pull.author)}</code>{labels_html}"
-            f"<br>{detail_html}</li>"
+            f"{escape(pull.title)} by <b>{escape(pull.author)}</b>"
+            f"<ul>{''.join(f'<li>{line}</li>' for line in sub_html)}</ul></li>"
         )
 
-    for team, team_pulls in _sorted_by_team(config, pulls):
-        text_lines += ["", f"{team.name} ({len(team_pulls)})"]
-        html_parts.append(f"<h4>{escape(team.name)} ({len(team_pulls)})</h4>")
+    for team, team_pulls in _sorted_by_team(teams, pulls):
+        text_lines += ["", f"{team.title} ({len(team_pulls)})"]
+        html_parts.append(f"<h4>{escape(team.title)} ({len(team_pulls)})</h4>")
+        informational = [p for p in team_pulls if not p.actionable and not p.is_dependency_update]
         sections = [
             ("Needs review", [p for p in team_pulls if p.actionable]),
-            ("For information", [p for p in team_pulls if not p.actionable]),
+            ("Collaborators", [p for p in informational if p.is_collaborator]),
+            ("Community", [p for p in informational if not p.is_collaborator]),
+            (
+                "Dependencies",
+                [p for p in team_pulls if not p.actionable and p.is_dependency_update],
+            ),
         ]
         for title, section_pulls in sections:
             if not section_pulls:

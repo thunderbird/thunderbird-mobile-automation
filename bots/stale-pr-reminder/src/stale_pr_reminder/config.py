@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 DEFAULT_PRIORITY = 100
+DEFAULT_ROOM_ENV = "MATRIX_ROOM_ID"
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,12 @@ class LabelRule:
 class Team:
     name: str
     repos: list[str]
+    emoji: str = ""
+    room_env: str = DEFAULT_ROOM_ENV  # environment variable holding the room ID
+
+    @property
+    def title(self) -> str:
+        return f"{self.emoji} {self.name}" if self.emoji else self.name
 
 
 @dataclass(frozen=True)
@@ -33,6 +40,13 @@ class Config:
     @property
     def repos(self) -> list[str]:
         return sorted({repo for team in self.teams for repo in team.repos})
+
+    def teams_by_room(self) -> dict[str, list[Team]]:
+        """Teams grouped by the environment variable holding their room ID, in config order."""
+        rooms: dict[str, list[Team]] = {}
+        for team in self.teams:
+            rooms.setdefault(team.room_env, []).append(team)
+        return rooms
 
     def team_for(self, repo: str) -> Team | None:
         for team in self.teams:
@@ -67,7 +81,15 @@ class Config:
 def load_config(path: str | Path) -> Config:
     raw = yaml.safe_load(Path(path).read_text()) or {}
     labels = raw.get("labels") or {}
-    teams = [Team(name=t["name"], repos=list(t.get("repos") or [])) for t in raw.get("teams") or []]
+    teams = [
+        Team(
+            name=t["name"],
+            repos=list(t.get("repos") or []),
+            emoji=str(t.get("emoji") or ""),
+            room_env=str(t.get("room_env") or DEFAULT_ROOM_ENV),
+        )
+        for t in raw.get("teams") or []
+    ]
     if not teams:
         raise ValueError(f"{path}: at least one team is required")
     owners: dict[str, str] = {}
