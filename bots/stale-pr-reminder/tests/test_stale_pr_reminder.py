@@ -242,7 +242,7 @@ def test_teams_share_a_room_by_default(tmp_path):
     )
     config = load_config(path)
     rooms = config.teams_by_room()
-    assert [t.name for t in rooms["MATRIX_ROOM_ID"]] == ["A", "B"]
+    assert [t.name for t in rooms["MATRIX_ROOM_ID_STALE_PR_REMINDER"]] == ["A", "B"]
     assert [t.name for t in rooms["MATRIX_ROOM_ID_C"]] == ["C"]
     assert config.teams[0].title == "🤖 A" and config.teams[1].title == "B"
 

@@ -54,8 +54,8 @@ labels:
 # Only PRs in the repos listed here are checked.
 #
 # room_env names the environment variable (a secret in the workflow) holding the team's room ID;
-# the default is MATRIX_ROOM_ID. Teams sharing a room get one combined message, teams with their
-# own room get their own message.
+# the default is MATRIX_ROOM_ID_STALE_PR_REMINDER. Teams sharing a room get one combined message,
+# teams with their own room get their own message.
 teams:
   - name: Android
     emoji: "🤖"

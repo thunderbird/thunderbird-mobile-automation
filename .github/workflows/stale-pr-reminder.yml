@@ -43,7 +43,7 @@ jobs:
           MATRIX_ACCESS_TOKEN: ${{ secrets.MATRIX_ACCESS_TOKEN }}
           MATRIX_PICKLE_KEY: ${{ secrets.MATRIX_PICKLE_KEY }}
           MATRIX_ACCOUNT_PICKLE: ${{ secrets.MATRIX_ACCOUNT_PICKLE }}
-          MATRIX_ROOM_ID: ${{ secrets.MATRIX_ROOM_ID }}
+          MATRIX_ROOM_ID_STALE_PR_REMINDER: ${{ secrets.MATRIX_ROOM_ID_STALE_PR_REMINDER }}
           MATRIX_USERS: ${{ secrets.MATRIX_USERS }}
         run: >-
           uv run --frozen stale-pr-reminder

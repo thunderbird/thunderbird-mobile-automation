@@ -42,7 +42,7 @@ called "GitHub Actions", uploads its encryption keys, and stores the credentials
 
 1. Add the room ID (`!abc…:server`, from Element's *Room settings → Advanced*) as a secret:
    ```sh
-   gh secret set MATRIX_ROOM_ID --env matrix
+   gh secret set MATRIX_ROOM_ID_STALE_PR_REMINDER --env matrix
    ```
 2. Invite the bot to the room. It accepts the invite on its first run.
 
@@ -84,7 +84,7 @@ All secrets belong to the `matrix` environment.
 | `MATRIX_ACCESS_TOKEN` | `tb-matrix-setup` | Authentication |
 | `MATRIX_ACCOUNT_PICKLE` | `tb-matrix-setup` | The device's encryption identity |
 | `MATRIX_PICKLE_KEY` | `tb-matrix-setup` | Decrypts `MATRIX_ACCOUNT_PICKLE` |
-| `MATRIX_ROOM_ID` | you | Room to post to |
+| `MATRIX_ROOM_ID_STALE_PR_REMINDER` | you | Room the stale PR reminder posts to |
 | `MATRIX_USERS` | you (optional) | GitHub login → Matrix ID for @mentions |
 
 `GITHUB_TOKEN` comes from the workflow itself. The bots only read public repos.

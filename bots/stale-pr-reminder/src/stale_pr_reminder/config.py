@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 DEFAULT_PRIORITY = 100
-DEFAULT_ROOM_ENV = "MATRIX_ROOM_ID"
+DEFAULT_ROOM_ENV = "MATRIX_ROOM_ID_STALE_PR_REMINDER"
 
 
 @dataclass(frozen=True)
