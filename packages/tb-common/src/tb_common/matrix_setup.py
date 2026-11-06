@@ -5,6 +5,11 @@ Run locally (never in CI):
     uv run tb-matrix-setup                      # prints the secret values
     uv run tb-matrix-setup --gh-env matrix      # stores them via the gh CLI instead
 
+If the account has cross-signing (e.g. it was registered with Element and recovery was set up),
+enter the recovery key when asked. The new device is then signed with the account's
+self-signing key, so clients don't show an "unverified device" warning. The recovery key is
+only used locally and isn't stored anywhere.
+
 Each run creates a NEW device. Run it again only to rotate the device, and delete the old
 device afterwards (e.g. from Element's session list, or the homeserver admin API).
 """
@@ -22,6 +27,7 @@ import tempfile
 from nio import AsyncClient, AsyncClientConfig, KeysUploadResponse, LoginResponse
 from nio.store import SqliteStore
 
+from tb_common.cross_signing import CrossSigningError, cross_sign_device
 from tb_common.matrix import STORE_NAME
 
 
@@ -59,7 +65,7 @@ async def create_device(homeserver: str, user_id: str, password: str, device_nam
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--homeserver", help="e.g. https://matrix.example.org")
-    parser.add_argument("--user-id", help="e.g. @tb-bot:example.org")
+    parser.add_argument("--user-id", help="e.g. @thunderbird-mobile-bot:matrix.org")
     parser.add_argument("--device-name", default="GitHub Actions")
     parser.add_argument(
         "--gh-env",
@@ -72,9 +78,30 @@ def main() -> None:
     homeserver = args.homeserver or input("Homeserver URL: ").strip()
     user_id = args.user_id or input("Bot user ID (@name:server): ").strip()
     password = getpass.getpass(f"Password for {user_id}: ")
+    recovery_key = getpass.getpass("Recovery key, to sign the device (Enter to skip): ").strip()
 
     values = asyncio.run(create_device(homeserver, user_id, password, args.device_name))
     print(f"Created device {values['MATRIX_DEVICE_ID']} for {values['MATRIX_USER_ID']}.")
+
+    if recovery_key:
+        try:
+            cross_sign_device(
+                homeserver,
+                values["MATRIX_ACCESS_TOKEN"],
+                values["MATRIX_USER_ID"],
+                values["MATRIX_DEVICE_ID"],
+                recovery_key,
+            )
+            print("Signed the device with the account's self-signing key.")
+        except CrossSigningError as err:
+            print(f"Warning: device not signed: {err}", file=sys.stderr)
+            print(
+                "The bot still works, but its messages show an unverified warning.", file=sys.stderr
+            )
+    else:
+        print(
+            "Skipped signing: the bot's messages will show an unverified warning.", file=sys.stderr
+        )
 
     if args.gh_env:
         for name, value in values.items():

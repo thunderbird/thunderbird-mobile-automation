@@ -1,0 +1,7 @@
+# GitHub login -> Matrix user ID, for @mentions in the stale PR reminder.
+#
+# Copy to matrix-users.local.yml (ignored by git), fill in the real IDs and upload it:
+#   gh secret set MATRIX_USERS --env matrix < bots/stale-pr-reminder/matrix-users.local.yml
+#
+# Quote the Matrix IDs: YAML doesn't allow an unquoted value starting with "@".
+octocat: "@octocat:mozilla.org"

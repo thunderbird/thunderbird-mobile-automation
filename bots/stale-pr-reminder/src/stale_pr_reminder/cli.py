@@ -26,6 +26,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    # matrix-nio logs room IDs at INFO level; workflow logs of this repo are public.
+    logging.getLogger("nio").setLevel(logging.WARNING)
 
     config = load_config(args.config)
     with GitHubClient() as github:
@@ -50,7 +52,7 @@ def main() -> None:
     matrix_users = parse_matrix_users(os.environ.get("MATRIX_USERS"))
     message = build_message(config, pulls, matrix_users)
     event_id = asyncio.run(send_message(MatrixCredentials.from_env(), room_id, message))
-    logging.info("Posted %d stale PRs to %s (%s)", len(pulls), room_id, event_id)
+    logging.info("Posted %d stale PRs to Matrix (event %s)", len(pulls), event_id)
 
 
 if __name__ == "__main__":

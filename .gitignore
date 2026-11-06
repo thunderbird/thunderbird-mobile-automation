@@ -5,3 +5,13 @@ __pycache__/
 .ruff_cache/
 *.db
 .env
+
+# IntelliJ / PyCharm
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Local, never committed (e.g. matrix-users.local.yml)
+*.local.yml

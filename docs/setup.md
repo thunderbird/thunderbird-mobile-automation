@@ -12,7 +12,7 @@ in this public repo.
 
 ## 1. Create the bot's Matrix account
 
-Create a dedicated account for the bot, e.g. `@tb-mobile-bot:mozilla.org`.
+Create a dedicated account for the bot, e.g. `@thunderbird-mobile-bot:matrix.org`.
 
 > [!IMPORTANT]
 > Don't log into the bot account with Element or any other full client. That sets up

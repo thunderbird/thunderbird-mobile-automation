@@ -1,16 +1,14 @@
 """Send messages to end-to-end encrypted Matrix rooms from stateless CI runners.
 
-GitHub Action runners keep no state between runs, but an E2EE device is defined by its
-long-lived identity keys. We keep that device stable by storing its pickled Olm account in a
-secret (created once with ``tb-matrix-setup``) and seeding a throwaway store with it each run.
-
-Everything else (Olm sessions to recipients, the Megolm room session) is recreated per run and
-discarded afterwards, which is fine for a bot that only sends. We never upload keys at runtime:
-the restored account would regenerate one-time keys with IDs the server has already seen.
+The bot's device is restored each run from its pickled Olm account (a secret created by
+``tb-matrix-setup``); all other crypto state is throwaway. Keys are never uploaded at runtime:
+the restored account would reuse one-time key IDs the server has already seen.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 import tempfile
 from collections.abc import Mapping
@@ -27,6 +25,10 @@ from nio.crypto.sessions import OlmAccount
 from nio.store import SqliteStore
 
 STORE_NAME = "bot.db"
+SYNC_ATTEMPTS = 6
+SYNC_RETRY_SECONDS = 5
+
+log = logging.getLogger(__name__)
 
 
 class MatrixError(RuntimeError):
@@ -70,19 +72,19 @@ class MatrixMessage:
         if self.formatted_body:
             content["format"] = "org.matrix.custom.html"
             content["formatted_body"] = self.formatted_body
-        # Intentional mentions (MSC3952): only these users get notified.
         content["m.mentions"] = {"user_ids": sorted(set(self.mention_user_ids))}
         return content
 
 
 def _sync_filter(room_id: str) -> dict:
-    # Only the target room's state is needed (members + encryption settings).
+    # Without lazy_load_members, Synapse omits rooms with partial state ("faster joins").
     return {
         "presence": {"types": []},
         "account_data": {"types": []},
         "room": {
             "rooms": [room_id],
-            "timeline": {"limit": 1},
+            "state": {"lazy_load_members": True},
+            "timeline": {"limit": 1, "lazy_load_members": True},
             "ephemeral": {"types": []},
             "account_data": {"types": []},
         },
@@ -109,6 +111,30 @@ def seed_store(credentials: MatrixCredentials, store_dir: str) -> None:
         ) from err
     seed.save_account(account)
     seed.database.close()
+
+
+async def _sync_room(client: AsyncClient, room_id: str):
+    """Sync until the room shows up; it can lag behind a federated join."""
+    sync = None
+    for attempt in range(1, SYNC_ATTEMPTS + 1):
+        client.next_batch = ""
+        client.loaded_sync_token = ""
+        sync = await client.sync(timeout=0, full_state=True, sync_filter=_sync_filter(room_id))
+        if not isinstance(sync, SyncResponse):
+            raise MatrixError(f"Sync failed: {sync}")
+        if room_id in client.rooms:
+            return client.rooms[room_id]
+        if attempt < SYNC_ATTEMPTS:
+            log.info("Room not in sync yet (attempt %d/%d), retrying", attempt, SYNC_ATTEMPTS)
+            await asyncio.sleep(SYNC_RETRY_SECONDS)
+
+    # No IDs: workflow logs are public.
+    rooms = sync.rooms
+    raise MatrixError(
+        "The joined room was missing from the sync response "
+        f"(joined: {len(rooms.join)}, invited: {len(rooms.invite)}, left: {len(rooms.leave)}; "
+        f"room in invite: {room_id in rooms.invite}, in leave: {room_id in rooms.leave})"
+    )
 
 
 async def send_message(
@@ -141,22 +167,16 @@ async def send_message(
                 credentials.user_id, credentials.device_id, credentials.access_token
             )
 
-            # Idempotent: accepts a pending invite, no-op if already joined.
-            join = await client.join(room_id)
+            # Accepts a pending invite; the returned room ID is canonical.
+            join = await client.join(room_id.strip())
             if not isinstance(join, JoinResponse):
-                raise MatrixError(f"Could not join {room_id}: {join}")
+                raise MatrixError(f"Could not join the room: {join}")
+            room_id = join.room_id
 
-            sync = await client.sync(timeout=0, full_state=True, sync_filter=_sync_filter(room_id))
-            if not isinstance(sync, SyncResponse):
-                raise MatrixError(f"Sync failed: {sync}")
-
-            room = client.rooms.get(room_id)
-            if room is None:
-                raise MatrixError(f"Room {room_id} not found after sync")
+            room = await _sync_room(client, room_id)
             if require_encryption and not room.encrypted:
-                raise MatrixError(f"Room {room_id} is not encrypted; refusing to send")
+                raise MatrixError("The room is not encrypted; refusing to send")
 
-            # The bot trusts nobody explicitly, so it shares keys with all room members' devices.
             response = await client.room_send(
                 room_id,
                 "m.room.message",
