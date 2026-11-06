@@ -6,7 +6,9 @@ from html import escape
 from tb_common.matrix import MatrixMessage
 
 from .collect import StalePullRequest
-from .config import DEFAULT_PRIORITY, Config, Team
+from .config import Config, Team
+
+SECTIONS = ["Maintainers", "Dependencies", "Collaborators", "Community"]
 
 
 def _days(value: float) -> str:
@@ -49,7 +51,7 @@ def build_message(
         return login, f"<b>{escape(login)}</b>"
 
     def add_pull(pull: StalePullRequest) -> None:
-        flag = "⭐ " if pull.priority < DEFAULT_PRIORITY else ""
+        flag = f"{pull.marker} " if pull.marker else ""
         ref = f"{pull.repo.split('/')[-1]}#{pull.number}"
         reviewers_text, reviewers_html = [], []
         for stale in pull.stale_reviewers:
@@ -82,16 +84,7 @@ def build_message(
     for team, team_pulls in _sorted_by_team(teams, pulls):
         text_lines += ["", f"{team.title} ({len(team_pulls)})"]
         html_parts.append(f"<h4>{escape(team.title)} ({len(team_pulls)})</h4>")
-        informational = [p for p in team_pulls if not p.actionable and not p.is_dependency_update]
-        sections = [
-            ("Needs review", [p for p in team_pulls if p.actionable]),
-            ("Collaborators", [p for p in informational if p.is_collaborator]),
-            ("Community", [p for p in informational if not p.is_collaborator]),
-            (
-                "Dependencies",
-                [p for p in team_pulls if not p.actionable and p.is_dependency_update],
-            ),
-        ]
+        sections = [(title, [p for p in team_pulls if p.section == title]) for title in SECTIONS]
         for title, section_pulls in sections:
             if not section_pulls:
                 continue

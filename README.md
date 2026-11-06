@@ -40,13 +40,15 @@ with @mentions.
   restarts that; comments and pushes don't. For team review requests, any review by someone other
   than the author resets the clock.
 - **Teams:** each repo belongs to exactly one team, and its PRs are reported under that team.
-- **Labels:** `status: blocked` PRs and drafts are skipped. PRs with `tb-team` or a
-  `priority:` label are listed under **Needs review**, and their reviewers are @mentioned:
-  `priority: urgent` (stale immediately, listed first), `priority: high` (1 day), `tb-team` (2 days),
-  `priority: medium` (3 days), `priority: low` (5 days).
-- **Unlabeled PRs** are listed after 10 working days, with their reviewers and how long they've
-  been waiting, but no @mentions: first **Collaborators** (org members and repo collaborators),
-  then **Community** (everyone else), then **Dependencies** (Dependabot and Renovate PRs).
+- **Sections** show whose PR it is: **Maintainers** (`tb-team` label), **Dependencies** (Dependabot
+  and Renovate), **Collaborators** (org members and repo collaborators) and **Community** (everyone
+  else).
+- **Labels** set the urgency in every section. PRs with `tb-team` or a `priority:` label are
+  listed first and their reviewers are @mentioned: `priority: urgent` (stale immediately),
+  `priority: high` (1 day), `tb-team` (2 days), `priority: medium` (3 days), `priority: low`
+  (5 days). Priority labels also put a marker in front of the PR: 🔴 urgent, 🟠 high, 🟡 medium,
+  🔵 low. Other PRs are listed after 10 working days (dependency updates after 3)
+  without @mentions. `status: blocked` PRs and drafts are skipped.
 - **Mentions:** GitHub logins are mapped to Matrix IDs by the `MATRIX_USERS` secret
   ([setup](docs/setup.md#5-map-github-users-to-matrix-users-optional)), so the mapping isn't
   public. Logs and the job summary only show GitHub logins.

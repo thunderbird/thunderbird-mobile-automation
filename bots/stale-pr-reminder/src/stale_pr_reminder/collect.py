@@ -19,7 +19,7 @@ class StaleReviewer:
 
 
 # GitHub only reports MEMBER for public org memberships; private members show up as
-# CONTRIBUTOR, so internal PRs rely on the tb-team label to land in "Needs review".
+# CONTRIBUTOR, so internal PRs rely on the tb-team label to land in "Maintainers".
 COLLABORATOR_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 DEPENDENCY_BOTS = {"dependabot[bot]", "renovate[bot]"}
 
@@ -38,6 +38,19 @@ class StalePullRequest:
     actionable: bool
     stale_reviewers: list[StaleReviewer]
     author_association: str = "NONE"
+    is_maintainer: bool = False
+    marker: str = ""
+
+    @property
+    def section(self) -> str:
+        """Whose PR it is. Urgency (threshold, mentions, order) comes from the label rules."""
+        if self.is_maintainer:
+            return "Maintainers"
+        if self.is_dependency_update:
+            return "Dependencies"
+        if self.is_collaborator:
+            return "Collaborators"
+        return "Community"
 
     @property
     def is_dependency_update(self) -> bool:
@@ -61,6 +74,8 @@ def evaluate_pull(
     if team is None:
         return None
     threshold = config.threshold_for(label_set)
+    if pull["user"]["login"].lower() in DEPENDENCY_BOTS:
+        threshold = min(threshold, config.dependency_stale_after_working_days)
 
     stale = [
         StaleReviewer(reviewer, days)
@@ -82,6 +97,8 @@ def evaluate_pull(
         actionable=config.is_actionable(label_set),
         stale_reviewers=sorted(stale, key=lambda r: -r.working_days),
         author_association=pull.get("author_association") or "NONE",
+        is_maintainer=config.is_maintainer(label_set),
+        marker=config.marker_for(label_set),
     )
 
 

@@ -309,7 +309,84 @@ def test_dependency_bot_prs_get_their_own_section():
     urgent_bump = pull(3, "dependabot[bot]", ["tb-team"])
     body = build_message(CONFIG, [bump, other_bot, urgent_bump]).content()["body"]
 
-    rest, dependencies = body.split("Dependencies:")
+    maintainers = body.split("Maintainers:")[1].split("Dependencies:")[0]
+    dependencies = body.split("Dependencies:")[1].split("Community:")[0]
+    community = body.split("Community:")[1]
+    assert "#3 " in maintainers
     assert "#1 " in dependencies and "#2 " not in dependencies
-    assert "#2 " in rest.split("Community:")[1]
-    assert "#3 " in rest.split("Needs review:")[1].split("Community:")[0]
+    assert "#2 " in community
+
+
+def test_priority_labels_set_urgency_but_not_the_section():
+    config = Config(
+        teams=[ANDROID, IOS],
+        stale_after_working_days=10,
+        label_rules=[
+            LabelRule("tb-team", stale_after_working_days=2, priority=2),
+            LabelRule("priority: high", stale_after_working_days=1, priority=1, marker="🟠"),
+        ],
+    )
+    users = parse_matrix_users('alice: "@alice:example.org"')
+    timeline = [requested("alice", "2026-10-26T09:00:00Z")]
+    repo = "thunderbird/thunderbird-android"
+    community_pr = make_pull(number=7, labels=[{"name": "priority: high"}])
+
+    stale = evaluate_pull(config, repo, community_pr, timeline, dt("2026-10-27T10:00"))
+    assert stale is not None and stale.threshold == 1 and stale.section == "Community"
+
+    body = build_message(config, [stale], users).content()["body"]
+    assert "Maintainers:" not in body
+    community = body.split("Community:")[1]
+    assert "🟠 thunderbird-android#7" in community and "@alice:example.org" in community
+
+
+def test_shipped_config_markers():
+    from pathlib import Path
+
+    config = load_config(Path(__file__).parents[1] / "config.yml")
+    assert config.marker_for({"priority: urgent"}) == "🔴"
+    assert config.marker_for({"priority: high", "priority: low"}) == "🟠"
+    assert config.marker_for({"tb-team"}) == ""
+    assert config.marker_for({"tb-team", "priority: medium"}) == "🟡"
+
+
+def test_dependency_updates_go_stale_sooner_without_mentions():
+    users = parse_matrix_users('alice: "@alice:example.org"')
+    timeline = [requested("alice", "2026-10-26T09:00:00Z")]
+    repo = "thunderbird/thunderbird-android"
+    bump = make_pull(user={"login": "dependabot[bot]"})
+
+    assert evaluate_pull(CONFIG, repo, bump, timeline, dt("2026-10-28T09:00")) is None
+    stale = evaluate_pull(CONFIG, repo, bump, timeline, dt("2026-10-29T09:00"))
+    assert stale is not None and stale.threshold == 3 and stale.section == "Dependencies"
+    assert build_message(CONFIG, [stale], users).content()["m.mentions"] == {"user_ids": []}
+
+    assert evaluate_pull(CONFIG, repo, make_pull(), timeline, dt("2026-10-29T09:00")) is None
+
+    labeled = make_pull(user={"login": "dependabot[bot]"}, labels=[{"name": "tb-team"}])
+    assert evaluate_pull(CONFIG, repo, labeled, timeline, dt("2026-10-28T10:00")) is not None
+
+
+def test_sections_are_listed_in_priority_order():
+    timeline = [requested("alice", "2026-10-12T09:00:00Z")]
+    now = dt("2026-11-02T09:00")
+    repo = "thunderbird/thunderbird-android"
+
+    def pull(number, **overrides):
+        data = make_pull(number=number, created_at="2026-10-01T09:00:00Z", **overrides)
+        return evaluate_pull(CONFIG, repo, data, timeline, now)
+
+    body = build_message(
+        CONFIG,
+        [
+            pull(1),
+            pull(2, author_association="MEMBER"),
+            pull(3, user={"login": "dependabot[bot]"}),
+            pull(4, labels=[{"name": "tb-team"}]),
+        ],
+    ).content()["body"]
+    positions = [
+        body.index(f"{name}:")
+        for name in ("Maintainers", "Dependencies", "Collaborators", "Community")
+    ]
+    assert positions == sorted(positions)

@@ -4,8 +4,11 @@
 # A requested reviewer is "stale" after this many working days (Mon-Fri, UTC) since they were
 # (re-)requested. Comments don't count; approving or requesting changes does.
 # This default applies to PRs without a matching label rule (no tb-team / priority label).
-# Those are listed "for information" only: their reviewers are NOT @mentioned.
+# Their reviewers are NOT @mentioned.
 stale_after_working_days: 10
+
+# Same, for Dependabot and Renovate PRs. If a label rule also matches, the lower threshold wins.
+dependency_stale_after_working_days: 3
 
 skip_drafts: true
 
@@ -18,25 +21,34 @@ labels:
   exclude:
     - "status: blocked"
 
-  # Label rules. PRs matching any rule are listed under "Needs review" and their reviewers
-  # are @mentioned. When several match, the lowest threshold and the lowest priority win.
-  # A lower priority is listed first.
+  # PRs with these labels are listed under "Maintainers". All other PRs are grouped by author:
+  # Dependencies (Dependabot, Renovate), Collaborators (org members, repo collaborators), Community.
+  maintainer:
+    - tb-team
+
+  # Label rules set urgency in every section: PRs matching any rule go stale sooner and their
+  # reviewers are @mentioned. When several match, the lowest threshold, the lowest priority and
+  # the marker of the highest-priority rule win. A lower priority is listed first.
   rules:
     - label: "priority: urgent"
       stale_after_working_days: 0   # immediately
       priority: 0
+      marker: "🔴"
     - label: "priority: high"
       stale_after_working_days: 1
       priority: 1
+      marker: "🟠"
     - label: tb-team
       stale_after_working_days: 2
       priority: 2
     - label: "priority: medium"
       stale_after_working_days: 3
       priority: 3
+      marker: "🟡"
     - label: "priority: low"
       stale_after_working_days: 5
       priority: 200
+      marker: "🔵"
 
 # Each repo belongs to exactly one team; its PRs are reported under that team.
 # Only PRs in the repos listed here are checked.

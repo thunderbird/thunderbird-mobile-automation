@@ -14,6 +14,7 @@ class LabelRule:
     label: str
     stale_after_working_days: float | None = None
     priority: int = DEFAULT_PRIORITY
+    marker: str = ""
 
 
 @dataclass(frozen=True)
@@ -32,8 +33,10 @@ class Team:
 class Config:
     teams: list[Team]
     stale_after_working_days: float = 10
+    dependency_stale_after_working_days: float = 3
     skip_drafts: bool = True
     exclude_labels: list[str] = field(default_factory=list)
+    maintainer_labels: list[str] = field(default_factory=lambda: ["tb-team"])
     label_rules: list[LabelRule] = field(default_factory=list)
     post_when_empty: bool = False
 
@@ -54,6 +57,9 @@ class Config:
                 return team
         return None
 
+    def is_maintainer(self, labels: set[str]) -> bool:
+        return bool(labels & {label.lower() for label in self.maintainer_labels})
+
     def is_excluded(self, labels: set[str]) -> bool:
         return bool(labels & {label.lower() for label in self.exclude_labels})
 
@@ -71,6 +77,11 @@ class Config:
     def is_actionable(self, labels: set[str]) -> bool:
         """PRs with a matching label rule mention their reviewers; others are informational."""
         return bool(self.matching_rules(labels))
+
+    def marker_for(self, labels: set[str]) -> str:
+        """The marker of the highest-priority matching rule that has one."""
+        marked = [rule for rule in self.matching_rules(labels) if rule.marker]
+        return min(marked, key=lambda rule: rule.priority).marker if marked else ""
 
     def priority_for(self, labels: set[str]) -> int:
         return min(
@@ -100,13 +111,18 @@ def load_config(path: str | Path) -> Config:
     return Config(
         teams=teams,
         stale_after_working_days=float(raw.get("stale_after_working_days", 10)),
+        dependency_stale_after_working_days=float(
+            raw.get("dependency_stale_after_working_days", 3)
+        ),
         skip_drafts=bool(raw.get("skip_drafts", True)),
         exclude_labels=list(labels.get("exclude") or []),
+        maintainer_labels=list(labels.get("maintainer") or ["tb-team"]),
         label_rules=[
             LabelRule(
                 label=r["label"],
                 stale_after_working_days=r.get("stale_after_working_days"),
                 priority=int(r.get("priority", DEFAULT_PRIORITY)),
+                marker=str(r.get("marker") or ""),
             )
             for r in labels.get("rules") or []
         ],
